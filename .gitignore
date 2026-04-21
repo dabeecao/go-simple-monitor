@@ -1,0 +1,23 @@
+# Binaries
+bin/
+
+# Go
+*.log
+*.tmp
+vendor/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Env
+.env
+
+# Database
+simple_monitor.db
+
+# GoReleaser
+artifacts.json

@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Simple Monitor</title>
+    <link rel="icon" href="static/favicon.ico">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Nunito', 'sans-serif']
+                    },
+                    animation: {
+                        'blob': 'blob 10s infinite',
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.1.0/css/xterm.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.1.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.7.0/lib/xterm-addon-fit.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+
+<body class="text-gray-800 dark:text-gray-100 font-sans antialiased relative min-h-screen selection:bg-blue-500/30" x-data="appData()" x-init="init()">
+
+    <div class="fixed inset-0 z-[-1] overflow-hidden bg-slate-50 dark:bg-[#080d1a] transition-colors duration-500">
+        <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-blue-300/30 dark:bg-blue-900/10 blur-[100px] animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-[35%] h-[35%] rounded-full bg-purple-300/30 dark:bg-purple-900/10 blur-[100px] animate-blob" style="animation-delay: 2s"></div>
+        <div class="absolute bottom-[-20%] left-[20%] w-[50%] h-[50%] rounded-full bg-cyan-300/30 dark:bg-cyan-900/10 blur-[100px] animate-blob" style="animation-delay: 4s"></div>
+    </div>
+
+    <div x-show="isAuthenticated && showMobileWarning" x-cloak x-transition:enter="transition ease-out duration-300" x-transition:enter-start="-translate-y-full" x-transition:enter-end="translate-y-0" class="md:hidden sticky top-0 z-[60] px-4 pt-3 pointer-events-none">
+        <div class="glass-panel p-3 rounded-2xl flex items-center justify-between shadow-xl border border-blue-200/50 dark:border-blue-500/20 pointer-events-auto bg-blue-50/90 dark:bg-blue-900/70">
+            <div class="flex items-center space-x-3">
+                <div class="bg-blue-500 text-white p-1.5 rounded-lg text-[10px]"><i class="fa-solid fa-desktop"></i></div>
+                <p class="text-[11px] font-bold text-blue-700 dark:text-blue-300 leading-tight" x-text="t('mobile_warning')"></p>
+            </div>
+            <button @click="showMobileWarning = false" class="text-blue-400 hover:text-blue-600 dark:hover:text-blue-200 p-1"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </div>
+
+    <div class="fixed top-4 left-4 right-4 sm:left-auto sm:right-4 z-[110] space-y-3 pointer-events-none flex flex-col sm:items-end">
+        <template x-for="toast in toasts" :key="toast.id">
+            <div x-show="toast.show" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-[-1rem] sm:translate-y-0 sm:translate-x-8" x-transition:enter-end="opacity-100 translate-y-0 sm:translate-x-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 translate-y-0 sm:translate-x-0" x-transition:leave-end="opacity-0 translate-y-[-1rem] sm:translate-x-8" class="glass-panel !bg-white/60 dark:!bg-slate-900/60 backdrop-blur-2xl border-l-4 shadow-xl p-4 rounded-xl flex items-center w-full sm:min-w-[300px] sm:max-w-md pointer-events-auto" :class="toast.type === 'error' ? 'border-l-red-500' : (toast.type === 'success' ? 'border-l-green-500' : 'border-l-blue-500')">
+                <i class="fa-solid text-xl mr-3 flex-shrink-0" :class="toast.type === 'error' ? 'fa-circle-xmark text-red-500' : (toast.type === 'success' ? 'fa-circle-check text-green-500' : 'fa-circle-info text-blue-500')"></i>
+                <span class="font-medium text-gray-800 dark:text-gray-100 text-sm break-words" x-text="toast.message"></span>
+            </div>
+        </template>
+    </div>
+
+    <div x-show="confirmDialog.show" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center">
+        <div class="absolute inset-0 bg-gray-900/40 dark:bg-black/60 backdrop-blur-lg transition-opacity" x-show="confirmDialog.show" x-transition.opacity.duration.300ms></div>
+        
+        <div class="glass-panel !bg-white dark:!bg-slate-800 border !border-gray-300 dark:!border-gray-600 shadow-2xl p-6 rounded-3xl max-w-[90%] sm:max-w-sm w-full mx-4 transform transition-all relative z-10" x-show="confirmDialog.show" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+            
+            <div class="flex flex-col items-center mb-6 text-center">
+                <div class="bg-red-100 dark:bg-red-500/20 p-4 rounded-full mb-4 shadow-inner">
+                    <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900 dark:text-white mb-2" x-text="confirmDialog.title"></h3>
+                <p class="text-gray-600 dark:text-gray-300 text-sm" x-text="confirmDialog.message"></p>
+            </div>
+            
+            <div class="flex justify-center space-x-3 w-full">
+                <button @click="confirmDialog.show = false" class="flex-1 py-3 rounded-xl glass-input font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border border-gray-300 dark:border-gray-600" x-text="t('cancel')"></button>
+                <button @click="executeConfirm()" class="flex-1 py-3 rounded-xl bg-red-500/90 hover:bg-red-600 text-white font-medium shadow-lg shadow-red-500/20 backdrop-blur-sm transition-colors border border-red-400/50" x-text="t('confirm')"></button>
+            </div>
+            
+        </div>
+    </div>
+
+    <div x-show="!isAuthenticated" x-cloak class="min-h-[100dvh] flex items-center justify-center px-4 relative z-10">
+        <div class="max-w-md w-full glass-panel rounded-3xl p-6 sm:p-8 transform transition-all">
+            <div class="text-center mb-8">
+                <div class="inline-flex justify-center items-center w-20 h-20 bg-blue-50 dark:bg-blue-500/20 rounded-2xl mb-5 shadow-inner border border-blue-200/50 dark:border-blue-700/30 backdrop-blur-md rotate-3">
+                    <i class="fa-solid fa-server text-4xl text-blue-600 dark:text-blue-400 -rotate-3"></i>
+                </div>
+                <h2 class="text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">VPS Monitor</h2>
+                <p class="text-gray-500 dark:text-gray-400 text-sm mt-2 font-medium" x-text="t('login_subtitle')"></p>
+            </div>
+            <form @submit.prevent="doLogin" class="space-y-5">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 pl-1" x-text="t('account')"></label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        <input type="text" x-model="loginForm.username" required class="w-full glass-input rounded-2xl py-3.5 pl-11 pr-4" autocomplete="username" :placeholder="t('username_ph')">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 pl-1" x-text="t('password')"></label>
+                    <div class="relative">
+                        <i class="fa-solid fa-lock absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                        <input type="password" x-model="loginForm.password" required autocomplete="current-password" class="w-full glass-input rounded-2xl py-3.5 pl-11 pr-4" placeholder="••••••••">
+                    </div>
+                </div>
+                <button type="submit" class="w-full mt-2 text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-2xl px-5 py-4 font-bold shadow-lg shadow-blue-500/30 transition-all flex justify-center items-center">
+                    <span x-text="t('login_btn')"></span> <i class="fa-solid fa-arrow-right ml-2 text-sm"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div x-show="isAuthenticated" x-cloak class="min-h-[100dvh] flex flex-col relative z-10 pb-20 md:pb-0">
+
+        <nav class="sticky top-0 z-40 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-700/50 shadow-sm transition-colors duration-300">
+            <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-3 lg:py-4 flex justify-between items-center">
+                <div class="flex items-center space-x-3 text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400">
+                    <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 bg-blue-600 dark:bg-blue-500 text-white rounded-xl text-sm shadow-md">
+                        <i class="fa-solid fa-server"></i>
+                    </div>
+                    <span class="sm:inline tracking-tight">S Monitor</span>
+                </div>
+
+                <div class="flex items-center space-x-2 sm:space-x-4">
+                    <div x-show="activeTab === 'monitor' && ['system','network'].includes(monitorSubTab)" x-transition class="relative">
+                        <i class="fa-solid fa-search absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="text" x-model="searchQuery" :placeholder="t('search_ph')" class="glass-input text-sm rounded-full pl-10 pr-4 py-2 w-32 sm:w-64 transition-all">
+                    </div>
+
+                    <button @click="toggleLang()" class="text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors glass-panel p-2.5 rounded-xl border-none" :title="t('lang_toggle')">
+                        <span class="font-bold text-sm" x-text="lang === 'vi' ? 'EN' : 'VN'"></span>
+                    </button>
+
+                    <button @click="toggleTheme()" class="text-gray-500 dark:text-gray-400 hover:text-yellow-500 dark:hover:text-blue-400 transition-colors glass-panel p-2.5 rounded-xl border-none" :title="t('theme_toggle')">
+                        <i class="fa-solid" :class="isDark ? 'fa-moon' : 'fa-sun'"></i>
+                    </button>
+
+                    <button @click="confirmLogout" class="text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors glass-panel p-2.5 rounded-xl border-none" :title="t('logout')">
+                        <i class="fa-solid fa-power-off text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <div class="container mx-auto flex-1 px-4 sm:px-6 lg:px-8 py-6 md:py-8 flex flex-col">
+
+            <div class="hidden md:flex justify-center mb-8 relative z-10">
+                <div class="inline-flex items-center p-1.5 glass-panel rounded-2xl space-x-1 shadow-lg shadow-blue-500/5">
+                    <template x-for="tab in tabsList" :key="tab.id">
+                        <button @click="switchTab(tab.id)" class="px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 flex items-center space-x-2 text-sm" :class="activeTab === tab.id ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200/50 dark:border-gray-700/50' : 'text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/5'">
+                            <i class="fa-solid" :class="tab.icon"></i><span><span x-text="t(tab.key)"></span></span>
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <div class="flex-1 relative">
+
+                <div x-show="activeTab === 'dashboard'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="space-y-4 sm:space-y-6 md:space-y-8">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 relative z-30">
+
+                        <div x-data="{ showDetails: false }" @mouseenter="showDetails = true" @mouseleave="showDetails = false" @click="showDetails = !showDetails" @click.outside="showDetails = false" :class="showDetails ? 'z-50' : 'z-10'" class="glass-panel relative p-3 sm:p-5 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-start space-y-2 sm:space-y-0 sm:space-x-4 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
+
+                            <i class="fa-solid fa-chevron-down absolute top-3 sm:top-4 right-3 sm:right-4 text-[10px] text-gray-400 opacity-40 group-hover:opacity-100 transition-all duration-300" :class="showDetails ? 'rotate-180 text-blue-500 opacity-100' : ''"></i>
+
+                            <div class="w-10 h-10 sm:w-14 sm:h-14 flex items-center justify-center bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-xl sm:rounded-2xl shadow-inner flex-shrink-0">
+                                <i class="fa-solid fa-microchip text-lg sm:text-2xl"></i>
+                            </div>
+                            <div class="min-w-0 w-full">
+                                <p class="text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5 sm:mb-1 truncate" x-text="t('cpu_load')"></p>
+                                <div class="flex flex-col">
+                                    <template x-if="isLoadingDashboard">
+                                        <div class="h-6 sm:h-8 w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse-fast"></div>
+                                    </template>
+                                    <template x-if="!isLoadingDashboard">
+                                        <div>
+                                            <div class="flex items-baseline space-x-0.5 sm:space-x-1">
+                                                <p class="text-xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight" x-text="stats.cpu"></p><span class="text-gray-500 font-medium text-xs sm:text-base">%</span>
+                                            </div>
+                                            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5" x-text="`${stats.cpu_cores} ${t('cores')} / ${stats.cpu_threads} ${t('threads')}`"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <template x-if="!isLoadingDashboard && stats.cpu_per_core && stats.cpu_per_core.length > 0">
+                                <div x-show="showDetails" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2 scale-95" x-transition:enter-end="opacity-100 translate-y-0 scale-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0 scale-100" x-transition:leave-end="opacity-0 translate-y-2 scale-95" class="absolute top-[105%] left-0 mt-1 min-w-full w-[200px] sm:w-[240px] p-4 glass-panel bg-white dark:bg-slate-900 border border-blue-200/60 dark:border-blue-500/30 rounded-2xl shadow-2xl origin-top max-h-[250px] overflow-y-auto cursor-default hide-scrollbar z-[100]" @click.stop>
+
+                                    <div class="space-y-3.5">
+                                        <div class="pb-3 mb-2 border-b border-gray-200/60 dark:border-gray-700/60">
+                                            <p class="text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight" x-text="stats.cpu_model"></p>
+                                            <div class="flex items-center justify-between mt-1.5">
+                                                <span class="text-[10px] text-gray-500 font-medium"><i class="fa-solid fa-gauge-high mr-1"></i><span x-text="t('clock_speed')"></span>:</span>
+                                                <span class="text-[10px] font-mono text-blue-500 dark:text-blue-400 font-bold" x-text="(stats.cpu_freq?.current || 0) + ' MHz'"></span>
+                                            </div>
+                                        </div>
+                                        <template x-for="(core_percent, index) in stats.cpu_per_core" :key="index">
+                                            <div class="w-full" :class="index > 0 ? 'pt-3 border-t border-gray-200/50 dark:border-gray-700/50' : ''">
+                                                <div class="flex justify-between items-end mb-1">
+                                                    <span class="text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 truncate mr-2" x-text="'Core ' + index"></span>
+                                                    <div class="flex items-baseline space-x-0.5 flex-shrink-0">
+                                                        <span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-white" x-text="core_percent"></span><span class="text-[10px] text-gray-500 font-medium">%</span>
+                                                    </div>
+                                                </div>
+                                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-0.5">
+                                                    <div class="h-1 rounded-full transition-all" :style="`width: ${core_percent}%`" :class="core_percent > 90 ? 'bg-red-500' : (core_percent > 75 ? 'bg-yellow-500' : 'bg-blue-500')"></div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div x-data="{ showDetails: false }" @mouseenter="showDetails = true" @mouseleave="showDetails = false" @click="showDetails = !showDetails" @click.outside="showDetails = false" :class="showDetails ? 'z-50' : 'z-10'" class="glass-panel relative p-3 sm:p-5 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-start space-y-2 sm:space-y-0 sm:space-x-4 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
+
+                            <i class="fa-solid fa-chevron-down absolute top-3 sm:top-4 right-3 sm:right-4 text-[10px] text-gray-400 opacity-40 group-hover:opacity-100 transition-all duration-300" :class="showDetails ? 'rotate-180 text-purple-500 opacity-100' : ''"></i>
+
+                            <div class="w-10 h-10 sm:w-14 sm:h-14 flex items-center justify-center bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-xl sm:rounded-2xl shadow-inner flex-shrink-0">
+                                <i class="fa-solid fa-memory text-lg sm:text-2xl"></i>
+                            </div>
+                            <div class="min-w-0 w-full">
+                                <p class="text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5 sm:mb-1 truncate" x-text="t('ram_usage')"></p>
+                                <div class="flex flex-col w-full">
+                                    <template x-if="isLoadingDashboard">
+                                        <div class="h-6 sm:h-8 w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse-fast"></div>
+                                    </template>
+                                    <template x-if="!isLoadingDashboard">
+                                        <div class="w-full">
+                                            <div class="flex items-baseline space-x-0.5 sm:space-x-1">
+                                                <p class="text-xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight" x-text="stats.ram"></p><span class="text-gray-500 font-medium text-xs sm:text-base">%</span>
+                                            </div>
+                                            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5" x-text="`${stats.ram_used} GB / ${stats.ram_total} GB`"></p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <template x-if="stats.swap_total > 0">
+                                <div x-show="showDetails" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2 scale-95" x-transition:enter-end="opacity-100 translate-y-0 scale-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0 scale-100" x-transition:leave-end="opacity-0 translate-y-2 scale-95" class="absolute top-[105%] left-0 mt-1 min-w-full w-[200px] sm:w-[240px] p-4 glass-panel bg-white dark:bg-slate-900 border border-blue-200/60 dark:border-blue-500/30 rounded-2xl shadow-2xl origin-top max-h-[250px] overflow-y-auto cursor-default hide-scrollbar z-[100]" @click.stop>
+                                    <div class="grid grid-cols-3 gap-2 mb-3 pb-3 border-b border-gray-200/60 dark:border-gray-700/60 text-center">
+                                    <div class="bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded-lg">
+                                        <p class="text-[9px] text-gray-500 font-bold uppercase mb-0.5">Active</p>
+                                        <p class="text-xs font-bold text-purple-600 dark:text-purple-400" x-text="(stats.ram_active || 0) + ' GB'"></p>
+                                    </div>
+                                    <div class="bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded-lg">
+                                        <p class="text-[9px] text-gray-500 font-bold uppercase mb-0.5">Cached</p>
+                                        <p class="text-xs font-bold text-blue-600 dark:text-blue-400" x-text="(stats.ram_cached || 0) + ' GB'"></p>
+                                    </div>
+                                    <div class="bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded-lg">
+                                        <p class="text-[9px] text-gray-500 font-bold uppercase mb-0.5">Buffers</p>
+                                        <p class="text-xs font-bold text-green-600 dark:text-green-400" x-text="(stats.ram_buffers || 0) + ' GB'"></p>
+                                    </div>
+                                </div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mr-6">Swap Memory</span>
+                                        <span class="text-xs font-bold text-purple-500" x-text="stats.swap_percent + '%'"></span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 mt-1">
+                                        <div class="bg-purple-400 dark:bg-purple-500 h-1.5 rounded-full" :style="`width: ${stats.swap_percent}%`"></div>
+                                    </div>
+                                    <p class="text-[10px] text-gray-500 dark:text-gray-400 font-medium mt-1.5 text-right"><span x-text="stats.swap_used"></span> GB / <span x-text="stats.swap_total"></span> GB</p>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div x-data="{ showDetails: false }" @mouseenter="showDetails = true" @mouseleave="showDetails = false" @click="showDetails = !showDetails" @click.outside="showDetails = false" :class="showDetails ? 'z-50' : 'z-10'" class="glass-panel relative p-3 sm:p-5 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-start space-y-2 sm:space-y-0 sm:space-x-4 hover:-translate-y-1 transition-all duration-300 cursor-pointer group">
+
+                            <i class="fa-solid fa-chevron-down absolute top-3 sm:top-4 right-3 sm:right-4 text-[10px] text-gray-400 opacity-40 group-hover:opacity-100 transition-all duration-300" :class="showDetails ? 'rotate-180 text-green-500 opacity-100' : ''"></i>
+
+                            <div class="w-10 h-10 sm:w-14 sm:h-14 flex items-center justify-center bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400 rounded-xl sm:rounded-2xl shadow-inner flex-shrink-0">
+                                <i class="fa-solid fa-hard-drive text-lg sm:text-2xl"></i>
+                            </div>
+                            <div class="min-w-0 w-full">
+                                <p class="text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5 sm:mb-1 truncate" x-text="t('disk_usage')"></p>
+                                <div class="flex flex-col w-full">
+                                    <template x-if="isLoadingDashboard">
+                                        <div class="h-6 sm:h-8 w-12 sm:w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse-fast"></div>
+                                    </template>
+                                    <template x-if="!isLoadingDashboard">
+                                        <div class="w-full">
+                                            <div class="flex items-baseline space-x-0.5 sm:space-x-1">
+                                                <p class="text-xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight" x-text="stats.disk"></p><span class="text-gray-500 font-medium text-xs sm:text-base">%</span>
+                                            </div>
+                                            <p class="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 font-medium mt-0.5"><span x-text="stats.disk_used"></span> GB / <span x-text="stats.disk_total"></span> GB</p>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <template x-if="!isLoadingDashboard && stats.disks && stats.disks.length > 0">
+                                <div x-show="showDetails" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-y-2 scale-95" x-transition:enter-end="opacity-100 translate-y-0 scale-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100 translate-y-0 scale-100" x-transition:leave-end="opacity-0 translate-y-2 scale-95" class="absolute top-[105%] left-0 mt-1 min-w-full w-[200px] sm:w-[240px] p-4 glass-panel bg-white dark:bg-slate-900 border border-blue-200/60 dark:border-blue-500/30 rounded-2xl shadow-2xl origin-top max-h-[250px] overflow-y-auto cursor-default hide-scrollbar z-[100]" @click.stop>
+
+                                    <div class="space-y-3.5">
+                                        <div class="flex justify-between items-center pb-3 mb-2 border-b border-gray-200/60 dark:border-gray-700/60">
+                                            <div>
+                                                <p class="text-[9px] text-gray-500 font-bold uppercase mb-0.5"><i class="fa-solid fa-arrow-up text-green-500 mr-1"></i>Total Read</p>
+                                                <p class="text-xs font-bold text-gray-800 dark:text-gray-200" x-text="(stats.disk_io?.read || 0) + ' GB'"></p>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-[9px] text-gray-500 font-bold uppercase mb-0.5"><i class="fa-solid fa-arrow-down text-blue-500 mr-1"></i>Total Write</p>
+                                                <p class="text-xs font-bold text-gray-800 dark:text-gray-200" x-text="(stats.disk_io?.write || 0) + ' GB'"></p>
+                                            </div>
+                                        </div>
+                                        <template x-for="(disk, index) in stats.disks" :key="disk.mountpoint">
+                                            <div class="w-full" :class="index > 0 ? 'pt-3 border-t border-gray-200/50 dark:border-gray-700/50' : ''">
+                                                <div class="flex justify-between items-end mb-1">
+                                                    <span class="text-[10px] sm:text-xs font-bold text-gray-700 dark:text-gray-300 truncate mr-2" x-text="disk.mountpoint" :title="disk.mountpoint"></span>
+                                                    <div class="flex items-baseline space-x-0.5 flex-shrink-0"><span class="text-xs sm:text-sm font-bold text-gray-900 dark:text-white" x-text="disk.percent"></span><span class="text-[10px] text-gray-500 font-medium">%</span>
+                                                    </div>
+                                                </div>
+                                                <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-0.5">
+                                                    <div class="h-1 rounded-full transition-all" :style="`width: ${disk.percent}%`" :class="disk.percent > 90 ? 'bg-red-500' : (disk.percent > 75 ? 'bg-yellow-500' : 'bg-green-500')"></div>
+                                                </div>
+                                                <p class="text-[9px] sm:text-[10px] text-gray-500 dark:text-gray-400 font-medium mt-1 text-right"><span x-text="disk.used"></span> / <span x-text="disk.total"></span> GB</p>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <div class="glass-panel p-3 sm:p-5 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-start space-y-2 sm:space-y-0 sm:space-x-4 hover:-translate-y-1 transition-transform duration-300 z-10">
+                            <div class="w-10 h-10 sm:w-14 sm:h-14 flex items-center justify-center bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-xl sm:rounded-2xl shadow-inner flex-shrink-0">
+                                <i class="fa-solid fa-clock-rotate-left text-lg sm:text-2xl"></i>
+                            </div>
+                            <div class="min-w-0 w-full">
+                                <p class="text-gray-500 dark:text-gray-400 text-[10px] sm:text-xs font-bold uppercase tracking-wider mb-0.5 sm:mb-1 truncate">Uptime</p>
+                                <template x-if="isLoadingDashboard">
+                                    <div class="h-6 sm:h-7 w-16 sm:w-24 bg-gray-200 dark:bg-gray-700 rounded animate-pulse-fast mt-1"></div>
+                                </template>
+                                <template x-if="!isLoadingDashboard">
+                                    <div class="flex flex-col justify-center">
+                                        <p class="text-xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight truncate" x-text="stats.uptime"></p>
+                                        <p class="text-[10px] sm:text-xs text-green-500 font-medium mt-0.5">Online</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6">
+                        <div class="glass-panel p-4 sm:p-6 rounded-2xl sm:rounded-3xl hover:-translate-y-1 transition-transform duration-300">
+                            <div class="flex items-center mb-4 border-b border-gray-200/50 dark:border-gray-700/50 pb-3">
+                                <div class="w-10 h-10 flex items-center justify-center bg-blue-100 dark:bg-blue-500/10 rounded-xl mr-3 flex-shrink-0">
+                                    <i class="fa-brands fa-linux text-blue-600 dark:text-blue-400 text-xl"></i>
+                                </div>
+                                <h3 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white" x-text="t('server_info')"></h3>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-500 dark:text-gray-400 text-xs sm:text-sm font-semibold uppercase tracking-wide" x-text="t('os')"></span>
+                                    <span class="font-bold text-gray-800 dark:text-gray-200 text-sm" x-text="stats.sys_info?.os || '---'"></span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-500 dark:text-gray-400 text-xs sm:text-sm font-semibold uppercase tracking-wide">Hostname</span>
+                                    <span class="font-mono font-medium text-gray-800 dark:text-gray-200 text-sm bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded" x-text="stats.sys_info?.hostname || '---'"></span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-500 dark:text-gray-400 text-xs sm:text-sm font-semibold uppercase tracking-wide" x-text="t('internal_ip')"></span>
+                                    <span class="font-mono font-bold text-blue-600 dark:text-blue-400 text-sm" x-text="stats.sys_info?.ip || '---'"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel p-4 sm:p-6 rounded-2xl sm:rounded-3xl hover:-translate-y-1 transition-transform duration-300">
+                            <div class="flex items-center mb-4 border-b border-gray-200/50 dark:border-gray-700/50 pb-3">
+                                <div class="w-10 h-10 flex items-center justify-center bg-green-100 dark:bg-green-500/10 rounded-xl mr-3 flex-shrink-0">
+                                    <i class="fa-solid fa-network-wired text-green-600 dark:text-green-400 text-xl"></i>
+                                </div>
+                                <h3 class="text-base sm:text-lg font-bold text-gray-900 dark:text-white" x-text="t('net_traffic')"></h3>
+                            </div>
+                            <div class="flex flex-col justify-center space-y-3 sm:space-y-4">
+                                <div class="flex items-center justify-between p-3.5 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
+                                    <div class="flex items-center"><i class="fa-solid fa-arrow-up text-green-500 mr-2 text-lg"></i> <span class="text-sm font-bold text-gray-700 dark:text-gray-300" x-text="t('total_up')"></span>
+                                    </div>
+                                    <span class="font-mono font-extrabold text-green-600 dark:text-green-400" x-text="stats.net_io ? (stats.net_io.sent > 1024 ? (stats.net_io.sent/1024).toFixed(2) + ' GB' : stats.net_io.sent + ' MB') : '0 MB'"></span>
+                                </div>
+                                <div class="flex items-center justify-between p-3.5 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-100 dark:border-gray-700/50 shadow-sm">
+                                    <div class="flex items-center"><i class="fa-solid fa-arrow-down text-blue-500 mr-2 text-lg"></i> <span class="text-sm font-bold text-gray-700 dark:text-gray-300" x-text="t('total_down')"></span>
+                                    </div>
+                                    <span class="font-mono font-extrabold text-blue-600 dark:text-blue-400" x-text="stats.net_io ? (stats.net_io.recv > 1024 ? (stats.net_io.recv/1024).toFixed(2) + ' GB' : stats.net_io.recv + ' MB') : '0 MB'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div x-show="activeTab === 'monitor'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="glass-panel rounded-3xl overflow-hidden flex flex-col">
+
+                    <div class="p-3 sm:p-5 border-b border-gray-200/50 dark:border-gray-700/50 bg-gray-50/50 dark:bg-gray-800/30 overflow-x-auto hide-scrollbar">
+                        <div class="flex justify-center min-w-max">
+                            <div class="inline-flex p-1 bg-gray-200/50 dark:bg-gray-900/50 backdrop-blur-md rounded-xl border border-white/60 dark:border-gray-700/50">
+                                <button @click="setMonitorTab('system')" :class="monitorSubTab === 'system' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200/50 dark:border-gray-700/50' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'" class="px-4 sm:px-5 py-2 rounded-lg text-sm font-semibold transition-all"><i class="fa-solid fa-cogs mr-1 sm:mr-2"></i><span class="hidden sm:inline" x-text="t('process')"></span>
+                                </button>
+                                <button @click="setMonitorTab('network')" :class="monitorSubTab === 'network' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200/50 dark:border-gray-700/50' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'" class="px-4 sm:px-5 py-2 rounded-lg text-sm font-semibold transition-all"><i class="fa-solid fa-network-wired mr-1 sm:mr-2"></i><span class="hidden sm:inline" x-text="t('network')"></span>
+                                </button>
+                                <button @click="setMonitorTab('ports')" :class="monitorSubTab === 'ports' ? 'bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 shadow-sm border border-gray-200/50 dark:border-gray-700/50' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'" class="px-4 sm:px-5 py-2 rounded-lg text-sm font-semibold transition-all">
+                                    <i class="fa-solid fa-door-open mr-1 sm:mr-2"></i><span class="hidden sm:inline" x-text="t('ports')"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div x-show="['system', 'network'].includes(monitorSubTab)" class="overflow-x-auto w-full">
+                        <table class="w-full text-sm text-left text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            <thead class="text-xs text-gray-500 dark:text-gray-400 uppercase bg-gray-100/50 dark:bg-gray-800/50 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50">
+                                <tr>
+                                    <th @click="sortBy('pid')" class="px-4 sm:px-6 py-4 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors font-bold tracking-wider w-16">
+                                        <i class="fa-solid fa-id-badge text-gray-400 mr-1 hidden sm:inline"></i> PID <i x-show="sortColumn === 'pid'" class="fa-solid ml-1 text-blue-500" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                            
+                                    <th @click="sortBy('name')" class="px-4 sm:px-6 py-4 cursor-pointer hover:text-gray-900 dark:hover:text-white transition-colors font-bold tracking-wider w-full">
+                                        <i class="fa-solid fa-cube text-gray-400 mr-1 hidden sm:inline"></i> <span x-text="t('process')"></span> <i x-show="sortColumn === 'name'" class="fa-solid ml-1 text-blue-500" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                            
+                                    <th x-show="monitorSubTab === 'network'" x-cloak class="hidden md:table-cell px-6 py-4 font-bold tracking-wider" x-text="t('connection')"></th>
+                                    
+                                    <th x-show="monitorSubTab === 'network'" x-cloak @click="sortBy('tx')" class="hidden sm:table-cell px-6 py-4 cursor-pointer text-right text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 font-bold tracking-wider">
+                                        <i class="fa-solid fa-arrow-up mr-1"></i> Up <i x-show="sortColumn === 'tx'" class="fa-solid ml-1" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                                    
+                                    <th x-show="monitorSubTab === 'network'" x-cloak @click="sortBy('rx')" class="hidden sm:table-cell px-6 py-4 cursor-pointer text-right text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-bold tracking-wider">
+                                        <i class="fa-solid fa-arrow-down mr-1"></i> Down <i x-show="sortColumn === 'rx'" class="fa-solid ml-1" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                            
+                                    <th x-show="monitorSubTab === 'system'" x-cloak @click="sortBy('cpu_percent')" class="hidden sm:table-cell px-6 py-4 cursor-pointer text-green-600 dark:text-green-500 hover:text-green-700 dark:hover:text-green-400 font-bold tracking-wider">
+                                        <i class="fa-solid fa-microchip mr-1"></i> CPU % <i x-show="sortColumn === 'cpu_percent'" class="fa-solid ml-1" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                                    
+                                    <th x-show="monitorSubTab === 'system'" x-cloak @click="sortBy('memory_percent')" class="hidden sm:table-cell px-6 py-4 cursor-pointer text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-bold tracking-wider">
+                                        <i class="fa-solid fa-memory mr-1"></i> RAM % <i x-show="sortColumn === 'memory_percent'" class="fa-solid ml-1" :class="sortAscending ? 'fa-caret-up' : 'fa-caret-down'"></i>
+                                    </th>
+                            
+                                    <th class="px-4 sm:px-6 py-4 text-center font-bold tracking-wider w-16">
+                                        <i class="fa-solid fa-bolt text-yellow-500"></i>
+                                    </th>
+                                </tr>
+                            </thead>
+
+                            <template x-if="isLoadingData && currentData.length === 0">
+                                <tbody>
+                                    <template x-for="i in 5" :key="i">
+                                        <tr class="border-b border-gray-100/30 dark:border-gray-700/30">
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-8 animate-pulse-fast"></div>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 animate-pulse-fast"></div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden md:table-cell px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-24 animate-pulse-fast"></div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden sm:table-cell px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16 animate-pulse-fast ml-auto"></div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden sm:table-cell px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16 animate-pulse-fast ml-auto"></div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'system'" x-cloak class="hidden sm:table-cell px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16 animate-pulse-fast"></div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'system'" x-cloak class="hidden sm:table-cell px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-16 animate-pulse-fast"></div>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-8 bg-gray-200 dark:bg-gray-700 rounded w-8 animate-pulse-fast mx-auto"></div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </template>
+
+                            <template x-if="!isLoadingData || currentData.length > 0">
+                                <template x-for="item in filteredAndSortedData" :key="item.pid + (item.laddr || '')">
+                                    <tbody x-data="{ expanded: false }" class="border-b border-gray-100/50 dark:border-gray-700/50">
+                                        <tr @click="expanded = !expanded" class="hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors group cursor-pointer sm:cursor-auto">
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs" x-text="item.pid"></td>
+
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 font-semibold text-gray-800 dark:text-gray-200 w-full max-w-0 cursor-pointer">
+                                                <div class="flex items-center justify-between gap-2">
+                                                    <span x-text="item.name" class="block transition-all duration-300 leading-relaxed" :class="expanded ? 'whitespace-normal break-all' : 'truncate'"></span>
+                                                    <i class="fa-solid fa-chevron-down text-xs text-gray-400 transition-transform duration-300 sm:hidden flex-shrink-0" :class="expanded ? 'rotate-180' : ''"></i>
+                                                </div>
+                                            </td>
+
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden md:table-cell px-6 py-4 font-mono text-gray-500 dark:text-gray-400 text-xs">
+                                                <span class="bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md" x-text="item.laddr"></span>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden sm:table-cell px-6 py-4 text-right">
+                                                <span class="inline-block bg-green-100/50 dark:bg-green-500/10 text-green-700 dark:text-green-400 font-mono text-xs px-2 py-1 rounded-md" x-text="(item.tx || 0).toFixed(1) + ' KB/s'"></span>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'network'" x-cloak class="hidden sm:table-cell px-6 py-4 text-right">
+                                                <span class="inline-block bg-blue-100/50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 font-mono text-xs px-2 py-1 rounded-md" x-text="(item.rx || 0).toFixed(1) + ' KB/s'"></span>
+                                            </td>
+
+                                            <td x-show="monitorSubTab === 'system'" x-cloak class="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                                                <div class="flex flex-col justify-center">
+                                                    <span class="font-mono text-green-600 dark:text-green-400 font-bold text-xs" x-text="(item.cpu_percent || 0).toFixed(1)+'%'"></span>
+                                                    <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1 overflow-hidden">
+                                                        <div class="bg-green-500 h-1 rounded-full" :style="`width: ${Math.min(item.cpu_percent || 0, 100)}%`"></div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td x-show="monitorSubTab === 'system'" x-cloak class="hidden sm:table-cell px-6 py-4 whitespace-nowrap">
+                                                <div class="flex flex-col justify-center">
+                                                    <span class="font-mono text-purple-600 dark:text-purple-400 font-bold text-xs"><span x-text="(item.memory_mb || 0).toFixed(1)"></span> MB <span class="text-[10px] text-gray-500 font-normal ml-1" x-text="'(' + (item.memory_percent || 0).toFixed(1) + '%)'"></span></span>
+                                                    <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-1 overflow-hidden">
+                                                        <div class="bg-purple-500 h-1 rounded-full" :style="`width: ${Math.min(item.memory_percent || 0, 100)}%`"></div>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 text-center">
+                                                <button @click.stop x-show="item.pid !== '-'" @click="killProcess(item.pid, item.name)" class="text-red-500 dark:text-red-400 hover:text-white bg-red-50 dark:bg-transparent hover:bg-red-500 border border-transparent hover:border-red-600 hover:shadow-lg w-8 h-8 rounded-lg transition-all sm:opacity-50 group-hover:opacity-100 flex items-center justify-center mx-auto" :title="t('kill')"><i class="fa-solid fa-power-off"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+
+                                        <tr x-show="expanded" class="sm:hidden bg-gray-50/80 dark:bg-gray-800/80">
+                                            <td colspan="7" class="p-0 border-0">
+                                                <div x-show="expanded" x-collapse>
+                                                    <div class="px-4 py-3 border-t border-gray-100 dark:border-gray-700">
+                                                        <div class="grid grid-cols-2 gap-3 text-xs">
+                                                            <template x-if="monitorSubTab === 'system'">
+                                                                <div class="col-span-2 space-y-3">
+                                                                    <div>
+                                                                        <span class="text-gray-500 block mb-1">CPU: <span x-text="(item.cpu_percent || 0).toFixed(1)+'%'" class="font-bold text-green-600 dark:text-green-400"></span></span>
+                                                                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                                                            <div class="bg-green-500 h-1.5 rounded-full transition-all" :style="`width: ${Math.min(item.cpu_percent || 0, 100)}%`"></div>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span class="text-gray-500 block mb-1">RAM: <span x-text="(item.memory_mb || 0).toFixed(1) + ' MB (' + (item.memory_percent || 0).toFixed(1) + '%)'" class="font-bold text-purple-600 dark:text-purple-400"></span></span>
+                                                                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+                                                                            <div class="bg-purple-500 h-1.5 rounded-full transition-all" :style="`width: ${Math.min(item.memory_percent || 0, 100)}%`"></div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+                                                            <template x-if="monitorSubTab === 'network'">
+                                                                <div class="col-span-2 space-y-2">
+                                                                    <div class="flex justify-between p-2.5 bg-white/50 dark:bg-gray-900/50 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+                                                                        <span class="text-green-600 dark:text-green-400 font-bold"><i class="fa-solid fa-arrow-up mr-1"></i><span x-text="(item.tx || 0).toFixed(1) + ' KB/s'"></span></span>
+                                                                        <span class="text-blue-600 dark:text-blue-400 font-bold"><i class="fa-solid fa-arrow-down mr-1"></i><span x-text="(item.rx || 0).toFixed(1) + ' KB/s'"></span></span>
+                                                                    </div>
+                                                                    <div class="text-gray-500 font-mono break-all p-2.5 bg-white/50 dark:bg-gray-900/50 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700">
+                                                                        Conn: <span x-text="item.laddr" class="text-gray-800 dark:text-gray-200"></span>
+                                                                    </div>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </template>
+                            </template>
+                        </table>
+                    </div>
+
+                    <div x-show="monitorSubTab === 'ports'" class="overflow-x-auto w-full">
+                        <table class="w-full text-sm text-left text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            <thead class="bg-gray-100/50 dark:bg-gray-800/50 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50 uppercase text-xs text-gray-500 dark:text-gray-400">
+                                <tr>
+                                    <th class="px-4 sm:px-6 py-4 font-bold tracking-wider"><i class="fa-solid fa-plug text-orange-500 mr-1.5"></i> <span x-text="t('port')"></span></th>
+                                    <th class="px-4 sm:px-6 py-4 font-bold tracking-wider hidden sm:table-cell"><i class="fa-solid fa-globe text-blue-500 mr-1.5"></i> <span x-text="t('bind_ip')"></span></th>
+                                    <th class="px-4 sm:px-6 py-4 font-bold tracking-wider w-full min-w-[120px]"><i class="fa-solid fa-server text-gray-400 mr-1.5"></i> <span x-text="t('service')"></span></th>
+                                    <th class="px-4 sm:px-6 py-4 font-bold tracking-wider"><i class="fa-solid fa-id-badge text-gray-400 mr-1.5"></i> PID</th>
+                                </tr>
+                            </thead>
+
+                            <template x-if="isLoadingData && portData.length === 0">
+                                <tbody>
+                                    <template x-for="i in 3" :key="i">
+                                        <tr class="border-b border-gray-100/30 dark:border-gray-700/30">
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-6 bg-gray-200 dark:bg-gray-700 rounded w-12 animate-pulse-fast"></div>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-4 hidden sm:table-cell">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-20 animate-pulse-fast"></div>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-32 animate-pulse-fast"></div>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-4">
+                                                <div class="h-4 bg-gray-200 dark:bg-gray-700 rounded w-10 animate-pulse-fast"></div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </template>
+
+                            <template x-if="!isLoadingData || portData.length > 0">
+                                <tbody class="divide-y divide-gray-100/50 dark:divide-gray-700/50">
+                                    <template x-for="p in portData" :key="p.port">
+                                        <tr class="hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors">
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4">
+                                                <span class="bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg font-bold font-mono text-xs sm:text-sm border border-orange-200/50 dark:border-orange-500/20 shadow-sm" x-text="p.port"></span>
+                                            </td>
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 font-mono text-gray-500 dark:text-gray-400 text-xs hidden sm:table-cell" x-text="p.ip"></td>
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 font-bold text-gray-800 dark:text-white text-xs sm:text-sm truncate max-w-[120px] sm:max-w-none" x-text="p.name"></td>
+                                            <td class="px-4 sm:px-6 py-3 sm:py-4 font-mono text-blue-600 dark:text-blue-400 text-xs" x-text="p.pid"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </template>
+                        </table>
+                    </div>
+                </div>
+
+                <div x-show="activeTab === 'terminal'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="glass-panel p-2 rounded-3xl w-full h-[65vh] min-h-[400px] md:h-[650px] flex flex-col">
+                    <div class="flex items-center px-4 py-2 border-b border-gray-200/50 dark:border-gray-700/50 mb-2">
+                        <div class="flex space-x-2 mr-4">
+                            <div class="w-3 h-3 rounded-full bg-red-500 shadow-sm"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500 shadow-sm"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500 shadow-sm"></div>
+                        </div>
+                        <div class="text-xs font-mono text-gray-500 dark:text-gray-400 flex-1 text-center font-semibold truncate">root@vps-server:~</div>
+
+                        <button @click="confirmRefreshTerminal()" class="text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 transition-colors p-1" :title="t('restart_term')">
+                            <i class="fa-solid fa-arrows-rotate"></i>
+                        </button>
+                    </div>
+                    <div class="bg-[#0f111a] rounded-2xl flex-1 overflow-hidden p-2 shadow-inner border border-gray-800/80 relative">
+                        <div x-show="!termInited" class="absolute inset-0 flex items-center justify-center z-10"><i class="fa-solid fa-spinner fa-spin text-blue-500 text-3xl"></i>
+                        </div>
+                        <div id="terminal-container" class="w-full h-full"></div>
+                    </div>
+                </div>
+
+                <div x-show="activeTab === 'settings'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0" class="space-y-6 md:space-y-8 max-w-6xl mx-auto">
+                    <div class="grid lg:grid-cols-2 gap-6 md:gap-8">
+
+                        <div class="glass-panel p-4 sm:p-8 rounded-2xl sm:rounded-3xl h-fit">
+                            <div class="flex items-center mb-4 sm:mb-6 border-b border-gray-200/50 dark:border-gray-700/50 pb-3 sm:pb-4">
+                                <div class="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-blue-100 dark:bg-blue-500/20 rounded-xl sm:rounded-2xl mr-3 sm:mr-4 flex-shrink-0">
+                                    <i class="fa-solid fa-clock text-lg sm:text-xl text-blue-600 dark:text-blue-400"></i>
+                                </div>
+                                <h3 class="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white" x-text="t('cron_title')"></h3>
+                            </div>
+
+                            <div class="bg-gray-50/80 dark:bg-gray-800/50 p-3 sm:p-4 rounded-xl sm:rounded-2xl mb-4 sm:mb-6 border border-gray-200 dark:border-gray-700/50">
+                                <div class="flex flex-col sm:flex-row gap-2 sm:gap-3 mb-2 sm:mb-3">
+                                    <select x-model="cronPreset" @change="applyCronPreset()" class="w-full sm:w-[40%] glass-input rounded-xl p-2.5 sm:p-3 text-sm font-medium cursor-pointer">
+                                        <option value="custom" x-text="t('cron_select')"></option>
+                                        <option value="* * * * *" x-text="t('cron_min')"></option>
+                                        <option value="*/5 * * * *" x-text="t('cron_5min')"></option>
+                                        <option value="*/15 * * * *" x-text="t('cron_15min')"></option>
+                                        <option value="*/30 * * * *" x-text="t('cron_30min')"></option>
+                                        <option value="0 * * * *" x-text="t('cron_hour')"></option>
+                                        <option value="0 */12 * * *" x-text="t('cron_12hour')"></option>
+                                        <option value="0 0 * * *" x-text="t('cron_day')"></option>
+                                        <option value="0 0 * * 0" x-text="t('cron_sunday')"></option>
+                                        <option value="0 0 1 * *" x-text="t('cron_month')"></option>
+                                    </select>
+                                    <input x-model="newCron.schedule" placeholder="* * * * *" class="w-full sm:flex-1 glass-input p-2.5 sm:p-3 rounded-xl text-sm font-mono tracking-widest text-center sm:text-left">
+                                </div>
+                                <div class="flex space-x-2 sm:space-x-3">
+                                    <input x-model="newCron.command" :placeholder="t('cron_cmd')" class="flex-1 w-full glass-input p-2.5 sm:p-3 rounded-xl text-sm font-mono">
+                                    <button @click="saveCron" class="bg-blue-600 hover:bg-blue-700 text-white w-12 flex-shrink-0 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30 transition-transform"><i class="fa-solid fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="glass-input rounded-xl sm:rounded-2xl overflow-hidden shadow-inner border-0">
+                                <template x-for="c in cronList" :key="c.id">
+                                    <div x-data="{ expanded: false }" class="p-3 sm:p-4 border-b border-gray-200/50 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors group cursor-pointer" @click="expanded = !expanded">
+                                        <div class="grid grid-cols-[1fr_auto] gap-2 sm:gap-4 items-center w-full">
+                                            <div class="flex flex-col sm:flex-row sm:items-center min-w-0 overflow-hidden pr-2">
+                                                <div class="mb-1.5 sm:mb-0 sm:mr-3 flex-shrink-0">
+                                                    <span class="bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-400 px-2 sm:px-3 py-1 rounded-md sm:rounded-lg font-mono text-[10px] sm:text-xs border border-yellow-200/50 dark:border-yellow-500/20 inline-block" x-text="c.schedule"></span>
+                                                </div>
+                                                <div class="min-w-0 w-full overflow-hidden">
+                                                    <span class="text-gray-700 dark:text-gray-300 font-mono text-xs sm:text-sm block w-full transition-all" :class="expanded ? 'whitespace-normal break-all' : 'truncate'" title="Lệnh" x-text="c.command"></span>
+                                                </div>
+                                            </div>
+                                            <div class="flex-shrink-0 flex items-center justify-end">
+                                                <button @click.stop="expanded = !expanded" class="text-gray-400 p-2 sm:hidden"><i class="fa-solid text-[10px]" :class="expanded ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                                </button>
+                                                <button @click.stop="deleteCron(c.id)" class="text-red-500 hover:text-red-700 bg-red-50 dark:bg-transparent hover:bg-red-100 dark:hover:bg-red-500/20 p-2 sm:p-2.5 rounded-lg sm:rounded-xl transition-all sm:opacity-50 group-hover:opacity-100 ml-1 sm:ml-2">
+                                                    <i class="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="cronList.length === 0" class="p-6 sm:p-8 text-center text-gray-400 text-sm font-medium"><i class="fa-solid fa-clipboard-list text-2xl mb-2 block opacity-50"></i><span x-text="t('cron_empty')"></span></div>
+                            </div>
+                        </div>
+
+                        <div class="glass-panel p-4 sm:p-8 rounded-2xl sm:rounded-3xl h-fit">
+                            <div class="flex items-center mb-4 sm:mb-6 border-b border-gray-200/50 dark:border-gray-700/50 pb-3 sm:pb-4">
+                                <div class="w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center bg-[#0088cc]/10 rounded-xl sm:rounded-2xl mr-3 sm:mr-4 flex-shrink-0">
+                                    <i class="fa-brands fa-telegram text-lg sm:text-xl text-[#0088cc]"></i>
+                                </div>
+                                <h3 class="text-lg sm:text-xl font-extrabold text-gray-900 dark:text-white tracking-tight" x-text="t('tg_title')"></h3>
+                            </div>
+                            <form @submit.prevent="saveSettings" class="space-y-4 sm:space-y-6">
+                                <div class="space-y-3 sm:space-y-4">
+                                    <div>
+                                        <label class="block text-[10px] sm:text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 sm:mb-2 pl-1">Bot Token API</label>
+                                        <input type="password" x-model="tgSettings.tg_token" autocomplete="off" class="w-full glass-input rounded-xl p-2.5 sm:p-3 font-mono text-sm" placeholder="123456:ABC-DEF...">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] sm:text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5 sm:mb-2 pl-1">Chat ID</label>
+                                        <input type="text" x-model="tgSettings.tg_chat_id" class="w-full glass-input rounded-xl p-2.5 sm:p-3 font-mono text-sm" placeholder="1234567890">
+                                    </div>
+                                </div>
+                                <div class="bg-gray-50/50 dark:bg-gray-800/30 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-gray-200/80 dark:border-gray-700/50 space-y-2 sm:space-y-3">
+                                    <label class="block text-[10px] sm:text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1 pl-1" x-text="t('tg_cond')"></label>
+
+                                    <label class="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/70 dark:bg-gray-900/50 border border-transparent hover:border-blue-300 dark:hover:border-blue-800/50 transition-colors cursor-pointer group">
+                                        <div class="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                                            <input type="checkbox" x-model="tgSettings.tg_cpu_enabled" class="w-4 h-4 sm:w-5 sm:h-5 rounded accent-blue-600 bg-white border-gray-300 flex-shrink-0">
+                                            <span class="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 truncate" x-text="t('tg_cpu')"></span>
+                                        </div>
+                                        <div class="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+                                            <span class="text-gray-400 text-xs sm:text-sm font-bold">></span>
+                                            <input type="number" x-model="tgSettings.tg_cpu_threshold" class="w-12 sm:w-16 glass-input rounded-lg p-1 sm:p-1.5 text-center text-xs sm:text-sm font-bold text-blue-600 dark:text-blue-400" @click.stop>
+                                            <span class="text-gray-400 text-xs sm:text-sm font-medium">%</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/70 dark:bg-gray-900/50 border border-transparent hover:border-purple-300 dark:hover:border-purple-800/50 transition-colors cursor-pointer group">
+                                        <div class="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                                            <input type="checkbox" x-model="tgSettings.tg_ram_enabled" class="w-4 h-4 sm:w-5 sm:h-5 rounded accent-purple-600 bg-white border-gray-300 flex-shrink-0">
+                                            <span class="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 truncate" x-text="t('tg_ram')"></span>
+                                        </div>
+                                        <div class="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+                                            <span class="text-gray-400 text-xs sm:text-sm font-bold">></span>
+                                            <input type="number" x-model="tgSettings.tg_ram_threshold" class="w-12 sm:w-16 glass-input rounded-lg p-1 sm:p-1.5 text-center text-xs sm:text-sm font-bold text-purple-600 dark:text-purple-400" @click.stop>
+                                            <span class="text-gray-400 text-xs sm:text-sm font-medium">%</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="flex items-center justify-between p-2.5 sm:p-3 rounded-xl bg-white/70 dark:bg-gray-900/50 border border-transparent hover:border-green-300 dark:hover:border-green-800/50 transition-colors cursor-pointer group">
+                                        <div class="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                                            <input type="checkbox" x-model="tgSettings.tg_disk_enabled" class="w-4 h-4 sm:w-5 sm:h-5 rounded accent-green-600 bg-white border-gray-300 flex-shrink-0">
+                                            <span class="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 truncate" x-text="t('tg_disk')"></span>
+                                        </div>
+                                        <div class="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
+                                            <span class="text-gray-400 text-xs sm:text-sm font-bold">></span>
+                                            <input type="number" x-model="tgSettings.tg_disk_threshold" class="w-12 sm:w-16 glass-input rounded-lg p-1 sm:p-1.5 text-center text-xs sm:text-sm font-bold text-green-600 dark:text-green-400" @click.stop>
+                                            <span class="text-gray-400 text-xs sm:text-sm font-medium">%</span>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div class="flex space-x-3 mt-4 sm:mt-6">
+                                    <button type="button" @click="testTelegram()" class="w-1/3 bg-gray-600 hover:bg-gray-700 text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-bold shadow-lg transition-all flex justify-center items-center">
+                                        <i class="fa-regular fa-paper-plane mr-2"></i> <span x-text="t('test_cfg')"></span>
+                                    </button>
+                                    
+                                    <button type="submit" class="w-2/3 bg-gradient-to-r from-[#0088cc] to-[#0099e6] hover:from-[#0077b3] hover:to-[#0088cc] text-white py-3 sm:py-3.5 rounded-xl sm:rounded-2xl text-sm sm:text-base font-bold shadow-lg shadow-[#0088cc]/30 transition-all flex justify-center items-center">
+                                        <i class="fa-solid fa-floppy-disk mr-2"></i> <span x-text="t('save_cfg')"></span>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <footer class="mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-300/50 dark:border-gray-700/50 text-center text-xs sm:text-sm text-gray-500 font-medium pb-4">
+                &copy; <span x-text="new Date().getFullYear()"></span> <span class="tracking-wide">Simple Monitor</span> by @dabeecao
+            </footer>
+        </div>
+
+        <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-t border-gray-200/50 dark:border-white/10 z-[100] flex justify-around p-2 pb-safe shadow-[0_-10px_30px_rgba(0,0,0,0.1)]">
+            <template x-for="tab in tabsList" :key="tab.id">
+                <button @click="switchTab(tab.id)" class="flex-1 flex flex-col items-center justify-center py-2 px-1 rounded-2xl transition-all duration-300 relative" :class="activeTab === tab.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'">
+                    <div x-show="activeTab === tab.id" x-transition.opacity class="absolute inset-0 bg-blue-100 dark:bg-blue-500/20 rounded-2xl -z-10 shadow-inner"></div>
+                    <i class="fa-solid text-[1.25rem] mb-1 transition-transform duration-300" :class="[tab.icon, activeTab === tab.id ? 'scale-110 -translate-y-0.5' : '']"></i>
+                    <span class="text-[10px] font-bold tracking-wide" x-text="t(tab.key)"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <script src="static/js/script.js"></script>
+</body>
+
+</html>

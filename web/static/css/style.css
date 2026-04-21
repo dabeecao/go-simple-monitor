@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;500;600;700&display=swap');
+[x-cloak] {
+    display: none !important;
+}
+
+html.dark {
+    color-scheme: dark;
+}
+
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(156, 163, 175, 0.5);
+    border-radius: 10px;
+}
+
+.dark::-webkit-scrollbar-thumb {
+    background: rgba(75, 85, 99, 0.5);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(156, 163, 175, 0.8);
+}
+
+.xterm-viewport {
+    overflow-y: auto !important;
+}
+
+.xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+}
+
+.xterm-viewport::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 4px;
+}
+
+.glass-panel {
+    @apply bg-white/90 dark:bg-slate-900/95 backdrop-blur-2xl border border-white/60 dark:border-white/10 shadow-lg dark:shadow-[0_8px_30px_rgb(0,0,0,0.5)] transition-colors duration-300;
+}
+
+.glass-input {
+    @apply bg-white/70 dark:bg-slate-800/80 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 backdrop-blur-md border border-gray-200/80 dark:border-gray-700/80 focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-blue-500/50 outline-none transition-all;
+}
+
+.pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 1rem);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+    display: none;
+}
