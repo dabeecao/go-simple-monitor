@@ -11,7 +11,7 @@ Nhờ khả năng build thành **single binary**, bạn có thể triển khai c
   Theo dõi CPU, RAM, Disk, Swap và tốc độ mạng (Tx/Rx) chi tiết theo từng tiến trình.
 
 - 💻 **Web Terminal**  
-  Truy cập Terminal trực tiếp trên trình duyệt qua WebSocket, hỗ trợ resize tự động.
+  Truy cập Terminal trực tiếp trên trình duyệt qua WebSocket.
 
 - 🔔 **Cảnh báo Telegram**  
   Tự động gửi thông báo khi tài nguyên vượt ngưỡng cấu hình.
@@ -25,10 +25,29 @@ Nhờ khả năng build thành **single binary**, bạn có thể triển khai c
 - 📦 **Single Binary**  
   Deploy nhanh chóng chỉ với 1 file.
 
+- 🌎 **Đa ngôn ngữ**  
+  Giao diện Web có ngôn ngữ Anh/Việt
+
 - 🛡️ **Bảo mật**  
   - JWT Authentication  
   - Rate Limit  
   - Trusted Proxies
+
+---
+
+## 📸 Ảnh xem trước giao diện
+
+### 🖥️ Giao diện Máy tính
+| | |
+| :---: | :---: |
+| <img src="preview/preview.jpg" width="100%"> | <img src="preview/preview-2.jpg" width="100%"> |
+
+### 📱 Giao diện Điện thoại
+| | | |
+| :---: | :---: | :---: |
+| <img src="preview/preview-3.jpg" width="100%"> | <img src="preview/preview-4.jpg" width="100%"> | <img src="preview/preview-4.jpg" width="100%"> |
+
+> *Giao diện được thiết kế tối ưu hóa cho mọi thiết bị (Responsive Design)*
 
 ---
 
