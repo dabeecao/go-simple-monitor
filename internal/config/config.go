@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"github.com/joho/godotenv"
 )
@@ -13,6 +14,9 @@ var (
 	JwtExpirationMins = 120
 	Port              = "5000"
 	TrustedProxies    []string
+
+	SystemMonitorInterval = 10 // seconds
+	NethogsIdleTimeout    = 60 // seconds
 )
 
 func Load() {
@@ -21,6 +25,13 @@ func Load() {
 	if env := os.Getenv("ADMIN_PASS"); env != "" { AdminPass = env }
 	if env := os.Getenv("SECRET_TOKEN"); env != "" { JwtSecret = []byte(env) }
 	if env := os.Getenv("PORT"); env != "" { Port = env }
+	
+	if env := os.Getenv("SYSTEM_MONITOR_INTERVAL"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil { SystemMonitorInterval = val }
+	}
+	if env := os.Getenv("NETHOGS_IDLE_TIMEOUT"); env != "" {
+		if val, err := strconv.Atoi(env); err == nil { NethogsIdleTimeout = val }
+	}
 	
 	if env := os.Getenv("TRUSTED_PROXIES"); env != "" {
 		proxies := strings.Split(env, ",")

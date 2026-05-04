@@ -94,7 +94,8 @@ document.addEventListener('alpine:init', () => {
                 tg_test_failed: "Không thể gửi tin nhắn",
                 error: "Lỗi",
                 network_error: "Lỗi mạng khi kết nối đến máy chủ.",
-                test_cfg: "Thử"
+                test_cfg: "Thử",
+                history_chart: "Lịch sử sử dụng (CPU/RAM)"
             },
             en: {
                 mobile_warning: 'Open on desktop for the best management experience',
@@ -188,7 +189,8 @@ document.addEventListener('alpine:init', () => {
                 tg_test_failed: "Failed to send message",
                 error: "Error",
                 network_error: "Network error while connecting to server.",
-                test_cfg: "Test"
+                test_cfg: "Test",
+                history_chart: "Usage History (CPU/RAM)"
             }
         },
 
@@ -249,6 +251,7 @@ document.addEventListener('alpine:init', () => {
         toasts: [],
         confirmDialog: { show: false, title: '', message: '', callback: null },
         term: null, termWs: null, termInited: false, fitAddon: null,
+        usageChart: null,
 
         init() {
             this.applyTheme();
@@ -343,7 +346,10 @@ document.addEventListener('alpine:init', () => {
 
         switchTab(tab) {
             this.activeTab = tab;
-            if (tab === 'dashboard') this.loadStats(true);
+            if (tab === 'dashboard') {
+                this.loadStats(true);
+                this.loadHistory();
+            }
             if (tab === 'monitor') this.setMonitorTab(this.monitorSubTab);
             if (tab === 'settings') {
                 this.loadCrons();
@@ -371,7 +377,10 @@ document.addEventListener('alpine:init', () => {
         startPolling() {
             this.switchTab(this.activeTab);
             this.fetchInterval = setInterval(() => {
-                if (this.activeTab === 'dashboard') this.loadStats(false);
+                if (this.activeTab === 'dashboard') {
+                    this.loadStats(false);
+                    this.loadHistory(false);
+                }
                 if (this.activeTab === 'monitor' && ['system', 'network'].includes(this.monitorSubTab)) this.loadData(false);
             }, 3000);
         },
@@ -382,6 +391,74 @@ document.addEventListener('alpine:init', () => {
                 const res = await this.apiFetch('/api/stats');
                 this.stats = await res.json();
             } catch (e) {} finally { this.isLoadingDashboard = false; }
+        },
+        
+        async loadHistory(showLoading = true) {
+            try {
+                const res = await this.apiFetch('/api/stats/history?limit=30');
+                const data = await res.json();
+                if (data) {
+                    this.renderChart(data.reverse());
+                }
+            } catch (e) {}
+        },
+
+        renderChart(data) {
+            const ctx = document.getElementById('usageChart');
+            if (!ctx) return;
+
+            const labels = data.map(d => {
+                const date = new Date(d.timestamp * 1000);
+                return date.getHours() + ":" + String(date.getMinutes()).padStart(2, '0') + ":" + String(date.getSeconds()).padStart(2, '0');
+            });
+            const cpuData = data.map(d => d.cpu);
+            const ramData = data.map(d => d.ram);
+
+            if (this.usageChart) {
+                this.usageChart.data.labels = labels;
+                this.usageChart.data.datasets[0].data = cpuData;
+                this.usageChart.data.datasets[1].data = ramData;
+                this.usageChart.update('none'); // Update without animation for smoothness
+            } else {
+                this.usageChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'CPU',
+                                data: cpuData,
+                                borderColor: '#3b82f6',
+                                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'RAM',
+                                data: ramData,
+                                borderColor: '#a855f7',
+                                backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 0
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            y: { min: 0, max: 100, grid: { color: 'rgba(156, 163, 175, 0.1)' }, ticks: { color: '#9ca3af', font: { size: 10 } } },
+                            x: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 10 }, maxRotation: 0 } }
+                        },
+                        interaction: { intersect: false, mode: 'index' }
+                    }
+                });
+            }
         },
 
         async loadData(showLoading = true) {

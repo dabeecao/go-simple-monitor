@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"go-simple-monitor/internal/config"
 	"go-simple-monitor/internal/db"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/disk"
@@ -25,6 +26,9 @@ var (
 	NethogsData = make(map[int32]NetHogData)
 	nethogsLock sync.RWMutex
 	BootTime    uint64
+
+	lastRequestTime time.Time
+	lastRequestLock sync.Mutex
 )
 
 func Start() {
@@ -35,23 +39,61 @@ func Start() {
 }
 
 func GetCurrentNethogs() map[int32]NetHogData {
+	lastRequestLock.Lock()
+	lastRequestTime = time.Now()
+	lastRequestLock.Unlock()
+
 	nethogsLock.RLock()
 	defer nethogsLock.RUnlock()
 	copyMap := make(map[int32]NetHogData)
-	for k, v := range NethogsData { copyMap[k] = v }
+	for k, v := range NethogsData {
+		copyMap[k] = v
+	}
 	return copyMap
 }
 
 func parseNethogs() {
 	for {
+		lastRequestLock.Lock()
+		lrTime := lastRequestTime
+		lastRequestLock.Unlock()
+
+		if time.Since(lrTime) > time.Duration(config.NethogsIdleTimeout)*time.Second {
+			nethogsLock.Lock()
+			if len(NethogsData) > 0 {
+				NethogsData = make(map[int32]NetHogData)
+			}
+			nethogsLock.Unlock()
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
 		cmd := exec.Command("nethogs", "-t", "-d", "2")
 		stdout, err := cmd.StdoutPipe()
-		if err != nil { time.Sleep(5 * time.Second); continue }
-		cmd.Start()
+		if err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		if err := cmd.Start(); err != nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+
 		scanner := bufio.NewScanner(stdout)
 		for scanner.Scan() {
+			lastRequestLock.Lock()
+			lrTime = lastRequestTime
+			lastRequestLock.Unlock()
+
+			if time.Since(lrTime) > time.Duration(config.NethogsIdleTimeout)*time.Second {
+				cmd.Process.Kill()
+				break
+			}
+
 			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, "Refreshing:") { continue }
+			if line == "" || strings.HasPrefix(line, "Refreshing:") {
+				continue
+			}
 			parts := strings.Split(line, "\t")
 			if len(parts) >= 3 {
 				tx, _ := strconv.ParseFloat(parts[1], 64)
@@ -79,6 +121,25 @@ func monitorSystem() {
 		if len(cpuPercents) > 0 { cpuVal = cpuPercents[0] }
 		vmStat, _ := mem.VirtualMemory()
 		now := time.Now().Unix()
+
+		// Lưu lịch sử sử dụng
+		partitions, _ := disk.Partitions(false)
+		var totalDisk, usedDisk uint64
+		for _, part := range partitions {
+			if part.Fstype == "" || part.Fstype == "squashfs" || part.Fstype == "tmpfs" || part.Fstype == "overlay" || part.Fstype == "loop" || strings.HasPrefix(part.Mountpoint, "/boot") {
+				continue
+			}
+			usage, err := disk.Usage(part.Mountpoint)
+			if err == nil && usage.Total > 0 {
+				totalDisk += usage.Total
+				usedDisk += usage.Used
+			}
+		}
+		aggDiskPercent := 0.0
+		if totalDisk > 0 {
+			aggDiskPercent = (float64(usedDisk) / float64(totalDisk)) * 100
+		}
+		db.SaveStats(cpuVal, vmStat.UsedPercent, aggDiskPercent)
 
 		if now-lastAlertTime > 300 {
 			var alerts []string
@@ -112,6 +173,6 @@ func monitorSystem() {
 				lastAlertTime = now
 			}
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(config.SystemMonitorInterval) * time.Second)
 	}
 }

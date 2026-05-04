@@ -112,6 +112,7 @@ func RegisterRoutes(r *gin.Engine) {
 	api := r.Group("/api")
 	api.Use(authMiddleware())
 	api.GET("/stats", getStats)
+	api.GET("/stats/history", getHistory)
 	api.GET("/system", getSystem)
 	api.GET("/network", getNetwork)
 	api.GET("/ports", getPorts)
@@ -200,6 +201,12 @@ func getStats(c *gin.Context) {
 		"sys_info": map[string]string{ "os": getPrettyOS(), "hostname": hostStat.Hostname, "ip": getLocalIP(),},
 		"net_io": map[string]float64{"sent": netSent, "recv": netRecv},
 	})
+}
+
+func getHistory(c *gin.Context) {
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	history := db.GetStatsHistory(limit)
+	c.JSON(http.StatusOK, history)
 }
 
 func getSystem(c *gin.Context) {
@@ -296,7 +303,20 @@ func getPorts(c *gin.Context) {
 
 func killProcess(c *gin.Context) {
 	pid, _ := strconv.Atoi(c.Param("pid"))
-	if p, err := process.NewProcess(int32(pid)); err == nil { p.Kill(); c.JSON(http.StatusOK, gin.H{"status": "success"}) } else { c.JSON(http.StatusBadRequest, gin.H{"detail": "Cannot kill"}) }
+	if pid <= 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Không thể tắt tiến trình hệ thống quan trọng"})
+		return
+	}
+	if pid == os.Getpid() {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Không thể tự tắt chính mình"})
+		return
+	}
+	if p, err := process.NewProcess(int32(pid)); err == nil {
+		p.Kill()
+		c.JSON(http.StatusOK, gin.H{"status": "success"})
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"detail": "Không thể tắt tiến trình này"})
+	}
 }
 
 func getSettings(c *gin.Context) {
