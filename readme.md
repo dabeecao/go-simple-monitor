@@ -7,8 +7,8 @@ Nhờ khả năng build thành **single binary**, bạn có thể triển khai c
 
 ## ✨ Tính năng nổi bật
 
-- 📊 **Giám sát thời gian thực**  
-  Theo dõi CPU, RAM, Disk, Swap và tốc độ mạng (Tx/Rx) chi tiết theo từng tiến trình.
+- 📊 **Giám sát thời gian thực & Biểu đồ lịch sử**  
+  Theo dõi CPU, RAM, Disk chi tiết qua biểu đồ đường và tốc độ mạng (Tx/Rx) theo từng tiến trình.
 
 - 💻 **Web Terminal**  
   Truy cập Terminal trực tiếp trên trình duyệt qua WebSocket.
@@ -140,6 +140,10 @@ PORT=5000
 # Nếu dùng Nginx làm reverse proxy, điền: 127.0.0.1
 # Nếu có nhiều proxy, cách nhau bằng dấu phẩy: 127.0.0.1,192.168.1.100
 TRUSTED_PROXIES=
+
+# Cấu hình thời gian giám sát (giây)
+SYSTEM_MONITOR_INTERVAL=10
+NETHOGS_IDLE_TIMEOUT=60
 ```
 
 ### ⚠️ Mặc định (nếu không có .env)
